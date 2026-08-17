@@ -1805,7 +1805,7 @@ func (b *Balancer) hasLossSignalLocked() bool {
 			continue
 		}
 		sent, _, _, _, _ := stats.snapshot()
-		if sent >= 5 {
+		if sent > 0 {
 			return true
 		}
 	}
@@ -1819,7 +1819,7 @@ func (b *Balancer) hasLatencySignalLocked() bool {
 			continue
 		}
 		_, _, _, _, count := stats.snapshot()
-		if count >= 5 {
+		if count > 0 {
 			return true
 		}
 	}
@@ -2032,13 +2032,10 @@ func (b *Balancer) leastLossTopTierCandidatesLocked(excludeKey string) []Connect
 
 func (b *Balancer) lossScoreLocked(idx int) uint64 {
 	if idx < 0 || idx >= len(b.stats) || b.stats[idx] == nil {
-		return 200 // Use a more neutral default for unknown
+		return 0
 	}
 	sent, _, lost, _, _ := b.stats[idx].snapshot()
-	if sent < 5 {
-		return 200 // Initial probation
-	}
-	if lost == 0 {
+	if sent == 0 || lost == 0 {
 		return 0
 	}
 	return (lost * 1000) / sent
@@ -2049,7 +2046,7 @@ func (b *Balancer) latencyScoreLocked(idx int) uint64 {
 		return 999000
 	}
 	_, _, _, sum, count := b.stats[idx].snapshot()
-	if count < 5 {
+	if count == 0 {
 		return 999000
 	}
 	return sum / count
