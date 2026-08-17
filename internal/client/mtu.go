@@ -721,13 +721,17 @@ func (c *Client) recheckInactiveResolver(ctx context.Context, conn Connection) {
 		return
 	}
 
-	conn.IsValid = true
+	actualConn, ok := c.balancer.GetConnectionByKey(conn.Key)
+	if !ok {
+		return
+	}
 
 	activeCount := c.balancer.ActiveCount()
 	totalCount := c.balancer.TotalCount()
-	c.logResolverReactivated(conn, resolveTime, burstPtr, activeCount, totalCount)
-
-	c.appendMTUReactiveAddedServerLine(&conn)
+	if actualConn.IsValid {
+		c.logResolverReactivated(actualConn, resolveTime, burstPtr, activeCount, totalCount)
+		c.appendMTUReactiveAddedServerLine(&actualConn)
+	}
 }
 
 func (c *Client) recheckResolverUploadMTU(ctx context.Context, conn Connection, transport *udpQueryTransport) (bool, time.Duration) {
