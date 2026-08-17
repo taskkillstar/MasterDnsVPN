@@ -462,3 +462,34 @@ func TestBalancerSetConnectionMTUUpdatesBalancerOnly(t *testing.T) {
 		t.Fatalf("expected snapshot MTUs to update, got up=%d chars=%d down=%d", got.UploadMTUBytes, got.UploadMTUChars, got.DownloadMTUBytes)
 	}
 }
+
+func TestBalancerLossThenLatency_NoProbationStarvation(t *testing.T) {
+	b := NewBalancer(BalancingLossThenLatency, nil)
+	connections := []*Connection{
+		{Key: "slow-established", IsValid: true},
+		{Key: "fast-new", IsValid: true},
+	}
+	b.SetConnections(connections)
+	_ = b.SetConnectionValidity("slow-established", true)
+	_ = b.SetConnectionValidity("fast-new", true)
+
+	// "slow-established" has 10 packets, 0 loss, 600ms latency
+	for i := 0; i < 10; i++ {
+		b.ReportSend("slow-established")
+		b.ReportSuccess("slow-established", 600*time.Millisecond)
+	}
+
+	// "fast-new" has 2 packets, 0 loss, 45ms latency (previously trapped under sent < 5 probation)
+	for i := 0; i < 2; i++ {
+		b.ReportSend("fast-new")
+		b.ReportSuccess("fast-new", 45*time.Millisecond)
+	}
+
+	best, ok := b.GetBestConnection()
+	if !ok {
+		t.Fatal("expected a valid connection")
+	}
+	if best.Key != "fast-new" {
+		t.Fatalf("expected fast newly reactivated resolver to be picked, got %q", best.Key)
+	}
+}
