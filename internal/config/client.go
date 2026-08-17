@@ -50,6 +50,7 @@ type ClientConfig struct {
 	StreamResolverFailoverResendThreshold int               `toml:"STREAM_RESOLVER_FAILOVER_RESEND_THRESHOLD"`
 	StreamResolverFailoverCooldownSec     float64           `toml:"STREAM_RESOLVER_FAILOVER_COOLDOWN"`
 	RecheckInactiveServersEnabled         bool              `toml:"RECHECK_INACTIVE_SERVERS_ENABLED"`
+	AutoSaveRankedResolvers               bool              `toml:"AUTO_SAVE_RANKED_RESOLVERS"`
 	AutoDisableTimeoutServers             bool              `toml:"AUTO_DISABLE_TIMEOUT_SERVERS"`
 	AutoDisableTimeoutWindowSeconds       float64           `toml:"AUTO_DISABLE_TIMEOUT_WINDOW_SECONDS"`
 	BaseEncodeData                        bool              `toml:"BASE_ENCODE_DATA"`
@@ -165,6 +166,7 @@ func defaultClientConfig() ClientConfig {
 		StreamResolverFailoverResendThreshold: 2,
 		StreamResolverFailoverCooldownSec:     2.5,
 		RecheckInactiveServersEnabled:         true,
+		AutoSaveRankedResolvers:               true,
 		AutoDisableTimeoutServers:             true,
 		AutoDisableTimeoutWindowSeconds:       30.0,
 		BaseEncodeData:                        false,
