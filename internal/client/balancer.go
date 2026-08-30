@@ -1908,6 +1908,7 @@ func (b *Balancer) lossThenLatencyCandidatesLocked(excludeKey string) []Connecti
 		idx     int
 		loss    uint64
 		latency uint64
+		hasRTT  bool
 	}
 
 	if !b.hasHybridSignalLocked() || len(b.activeIDs) == 0 {
@@ -1922,10 +1923,20 @@ func (b *Balancer) lossThenLatencyCandidatesLocked(excludeKey string) []Connecti
 		}
 		loss := b.lossScoreLocked(idx)
 		latency := b.hybridLatencyPenaltyLocked(idx)
+		hasRTT := false
+		if idx >= 0 && idx < len(b.stats) && b.stats[idx] != nil {
+			_, _, _, _, count := b.stats[idx].snapshot()
+			hasRTT = count > 0
+		}
 		if loss < bestLoss {
 			bestLoss = loss
 		}
-		candidates = append(candidates, candidate{idx: idx, loss: loss, latency: latency})
+		candidates = append(candidates, candidate{
+			idx:     idx,
+			loss:    loss,
+			latency: latency,
+			hasRTT:  hasRTT,
+		})
 	}
 	if len(candidates) == 0 {
 		return nil
@@ -1944,7 +1955,7 @@ func (b *Balancer) lossThenLatencyCandidatesLocked(excludeKey string) []Connecti
 			continue
 		}
 		lossShortlist = append(lossShortlist, cand)
-		if cand.latency < bestLatency {
+		if cand.hasRTT && cand.latency < bestLatency {
 			bestLatency = cand.latency
 		}
 	}
@@ -1952,15 +1963,22 @@ func (b *Balancer) lossThenLatencyCandidatesLocked(excludeKey string) []Connecti
 		return nil
 	}
 
+	if bestLatency == ^uint64(0) {
+		selected := make([]Connection, 0, len(lossShortlist))
+		for _, cand := range lossShortlist {
+			selected = append(selected, b.connections[cand.idx])
+		}
+		return selected
+	}
+
 	latencyTolerance := latencyToleranceForTier(bestLatency)
 	latencyCutoff := bestLatency + latencyTolerance
 
 	selected := make([]Connection, 0, len(lossShortlist))
 	for _, cand := range lossShortlist {
-		if cand.latency > latencyCutoff {
-			continue
+		if !cand.hasRTT || cand.latency <= latencyCutoff {
+			selected = append(selected, b.connections[cand.idx])
 		}
-		selected = append(selected, b.connections[cand.idx])
 	}
 	if len(selected) > 0 {
 		return selected

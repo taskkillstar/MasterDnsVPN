@@ -493,3 +493,57 @@ func TestBalancerLossThenLatency_NoProbationStarvation(t *testing.T) {
 		t.Fatalf("expected fast newly reactivated resolver to be picked, got %q", best.Key)
 	}
 }
+
+func TestBalancerLossThenLatency_SeededReactivationExploration(t *testing.T) {
+	b := NewBalancer(BalancingLossThenLatency, nil)
+	connections := []*Connection{
+		{Key: "fast-established", IsValid: true},
+		{Key: "reactivated-seeded", IsValid: true},
+	}
+	b.SetConnections(connections)
+	_ = b.SetConnectionValidity("fast-established", true)
+	_ = b.SetConnectionValidity("reactivated-seeded", true)
+
+	// "fast-established" has 10 packets, 0 loss, 40ms latency
+	for i := 0; i < 10; i++ {
+		b.ReportSend("fast-established")
+		b.ReportSuccess("fast-established", 40*time.Millisecond)
+	}
+
+	// "reactivated-seeded" has conservative stats seeded (sent=10, acked=8, lost=0, rttCount=0)
+	b.SeedConservativeStats("reactivated-seeded")
+
+	// Verify that the candidate pool includes both resolvers so zero-RTT candidate gets explored
+	pool := b.GetUniqueConnections(2)
+	if len(pool) != 2 {
+		t.Fatalf("expected both resolvers in candidate pool for exploration, got %d", len(pool))
+	}
+
+	hasReactivated := false
+	for i := 0; i < 50; i++ {
+		best, ok := b.GetBestConnection()
+		if !ok {
+			t.Fatal("expected a valid connection")
+		}
+		if best.Key == "reactivated-seeded" {
+			hasReactivated = true
+			break
+		}
+	}
+	if !hasReactivated {
+		t.Fatal("expected zero-RTT reactivated resolver to be selected for exploration")
+	}
+
+	// Once explored and reporting 20ms RTT, it should consistently win over 40ms established
+	b.ReportSend("reactivated-seeded")
+	b.ReportSuccess("reactivated-seeded", 20*time.Millisecond)
+
+	best, ok := b.GetBestConnection()
+	if !ok {
+		t.Fatal("expected a valid connection")
+	}
+	if best.Key != "reactivated-seeded" {
+		t.Fatalf("expected measured 20ms reactivated resolver to win over 40ms, got %q", best.Key)
+	}
+}
+
