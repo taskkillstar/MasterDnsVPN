@@ -15,6 +15,63 @@ import (
 	"testing"
 )
 
+func TestServerConfigAddress(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		want string
+	}{
+		{name: "family-neutral wildcard", host: "", want: ":53"},
+		{name: "IPv4", host: "0.0.0.0", want: "0.0.0.0:53"},
+		{name: "IPv6", host: "::", want: "[::]:53"},
+		{name: "concrete IPv6", host: "2001:db8::1", want: "[2001:db8::1]:53"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := ServerConfig{UDPHost: tt.host, UDPPort: 53}
+			if got := cfg.Address(); got != tt.want {
+				t.Fatalf("Address()=%q want=%q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestServerConfigUDPHostValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		host    string
+		want    string
+		wantErr bool
+	}{
+		{name: "empty uses family-neutral wildcard", want: ""},
+		{name: "IPv4 literal", host: "0.0.0.0", want: "0.0.0.0"},
+		{name: "IPv6 literal", host: "2001:db8::1", want: "2001:db8::1"},
+		{name: "non-IP value", host: "not-an-ip", wantErr: true},
+		{name: "bracketed IPv6 literal", host: "[::]", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := defaultServerConfig()
+			cfg.UDPHost = tt.host
+			got, err := finalizeServerConfig(cfg)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("finalizeServerConfig(%q) unexpectedly succeeded", tt.host)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("finalizeServerConfig(%q) returned error: %v", tt.host, err)
+			}
+			if got.UDPHost != tt.want {
+				t.Fatalf("UDPHost=%q want=%q", got.UDPHost, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadServerConfigWithOverridesAppliesFlagPrecedence(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "server_config.toml")
@@ -69,6 +126,7 @@ func TestServerConfigFlagBinderBuildsOverridesForSetFlagsOnly(t *testing.T) {
 
 	if err := fs.Parse([]string{
 		"-udp-port=5300",
+		"--fallback=[2001:db8::1]:5353",
 		"-domain=a.example.com,b.example.com",
 		"-use-external-socks5",
 		"-supported-upload-compression-types=0,1",
@@ -80,6 +138,9 @@ func TestServerConfigFlagBinderBuildsOverridesForSetFlagsOnly(t *testing.T) {
 	overrides := binder.Overrides()
 	if got, ok := overrides.Values["UDPPort"].(int); !ok || got != 5300 {
 		t.Fatalf("unexpected udp port override: %#v", overrides.Values["UDPPort"])
+	}
+	if got, ok := overrides.Values["FallbackAddress"].(string); !ok || got != "[2001:db8::1]:5353" {
+		t.Fatalf("unexpected fallback override: %#v", overrides.Values["FallbackAddress"])
 	}
 	if got, ok := overrides.Values["UseExternalSOCKS5"].(bool); !ok || !got {
 		t.Fatalf("unexpected socks5 override: %#v", overrides.Values["UseExternalSOCKS5"])
@@ -97,6 +158,62 @@ func TestServerConfigFlagBinderBuildsOverridesForSetFlagsOnly(t *testing.T) {
 	}
 	if _, exists := overrides.Values["UDPHost"]; exists {
 		t.Fatalf("did not expect unset flag to appear in overrides: %#v", overrides.Values["UDPHost"])
+	}
+}
+
+func TestLoadServerConfigAcceptsFallbackAddress(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "server_config.toml")
+
+	if err := os.WriteFile(configPath, []byte(`
+PROTOCOL_TYPE = "SOCKS5"
+UDP_PORT = 53
+FALLBACK = "  fallback.example.com:5353  "
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile config failed: %v", err)
+	}
+
+	cfg, err := LoadServerConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadServerConfig returned error: %v", err)
+	}
+	if cfg.FallbackAddress != "fallback.example.com:5353" {
+		t.Fatalf("unexpected fallback address: got=%q want=%q", cfg.FallbackAddress, "fallback.example.com:5353")
+	}
+}
+
+func TestServerConfigFallbackAddressValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		address string
+		wantErr bool
+	}{
+		{name: "disabled", address: ""},
+		{name: "hostname", address: "fallback.example.com:5353"},
+		{name: "bracketed ipv6", address: "[2001:db8::1]:5353"},
+		{name: "missing port", address: "fallback.example.com", wantErr: true},
+		{name: "empty port", address: "fallback.example.com:", wantErr: true},
+		{name: "signed port", address: "fallback.example.com:+5353", wantErr: true},
+		{name: "zero port", address: "fallback.example.com:0", wantErr: true},
+		{name: "port too large", address: "fallback.example.com:65536", wantErr: true},
+		{name: "empty host", address: ":5353", wantErr: true},
+		{name: "unspecified ipv4", address: "0.0.0.0:5353", wantErr: true},
+		{name: "unspecified ipv6", address: "[::]:5353", wantErr: true},
+		{name: "unbracketed ipv6", address: "2001:db8::1:5353", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := defaultServerConfig()
+			cfg.FallbackAddress = tt.address
+			_, err := finalizeServerConfig(cfg)
+			if tt.wantErr && err == nil {
+				t.Fatalf("finalizeServerConfig(%q) unexpectedly succeeded", tt.address)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("finalizeServerConfig(%q) returned error: %v", tt.address, err)
+			}
+		})
 	}
 }
 
@@ -269,6 +386,9 @@ func TestLoadServerConfigFromJSONBase64AppliesDefaults(t *testing.T) {
 	}
 	if cfg.UDPPort != 5301 {
 		t.Fatalf("unexpected JSON base64 UDP port: got=%d want=%d", cfg.UDPPort, 5301)
+	}
+	if cfg.UDPHost != "" {
+		t.Fatalf("unexpected default UDP host: got=%q want empty", cfg.UDPHost)
 	}
 	if cfg.MaxPacketsPerBatch != defaultServerConfig().MaxPacketsPerBatch {
 		t.Fatalf("expected default max packets per batch to apply: got=%d want=%d", cfg.MaxPacketsPerBatch, defaultServerConfig().MaxPacketsPerBatch)
