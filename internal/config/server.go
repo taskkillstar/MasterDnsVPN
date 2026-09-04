@@ -10,6 +10,7 @@ package config
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -29,6 +30,7 @@ type ServerConfig struct {
 	ProtocolType                      string   `toml:"PROTOCOL_TYPE"`
 	UDPHost                           string   `toml:"UDP_HOST"`
 	UDPPort                           int      `toml:"UDP_PORT"`
+	FallbackAddress                   string   `toml:"FALLBACK"`
 	UDPReaders                        int      `toml:"UDP_READERS"`
 	SocketBufferSize                  int      `toml:"SOCKET_BUFFER_SIZE"`
 	MaxConcurrentRequests             int      `toml:"MAX_CONCURRENT_REQUESTS"`
@@ -118,8 +120,9 @@ func DefaultServerConfig() ServerConfig {
 func defaultServerConfig() ServerConfig {
 	return ServerConfig{
 		ProtocolType:                      "SOCKS5",
-		UDPHost:                           "0.0.0.0",
+		UDPHost:                           "",
 		UDPPort:                           53,
+		FallbackAddress:                   "",
 		UDPReaders:                        4,
 		SocketBufferSize:                  8 * 1024 * 1024,
 		MaxConcurrentRequests:             16384,
@@ -285,12 +288,37 @@ func finalizeServerConfig(cfg ServerConfig) (ServerConfig, error) {
 		return cfg, fmt.Errorf("invalid PROTOCOL_TYPE: %q", cfg.ProtocolType)
 	}
 
-	if cfg.UDPHost == "" {
-		cfg.UDPHost = "0.0.0.0"
+	if cfg.UDPHost != "" && net.ParseIP(cfg.UDPHost) == nil {
+		return cfg, fmt.Errorf("invalid UDP_HOST %q: must be an unbracketed IP literal", cfg.UDPHost)
 	}
 
 	if cfg.UDPPort <= 0 || cfg.UDPPort > 65535 {
 		return cfg, fmt.Errorf("invalid UDP_PORT: %d", cfg.UDPPort)
+	}
+
+	cfg.FallbackAddress = strings.TrimSpace(cfg.FallbackAddress)
+	if cfg.FallbackAddress != "" {
+		host, portText, err := net.SplitHostPort(cfg.FallbackAddress)
+		if err != nil {
+			return cfg, fmt.Errorf("invalid FALLBACK address %q: expected HOST:PORT: %w", cfg.FallbackAddress, err)
+		}
+		if host == "" || host != strings.TrimSpace(host) {
+			return cfg, fmt.Errorf("invalid FALLBACK address %q: host must be nonempty", cfg.FallbackAddress)
+		}
+		if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
+			return cfg, fmt.Errorf("invalid FALLBACK address %q: target must not be an unspecified address", cfg.FallbackAddress)
+		}
+		portIsNumeric := portText != ""
+		for _, char := range portText {
+			if char < '0' || char > '9' {
+				portIsNumeric = false
+				break
+			}
+		}
+		port, err := strconv.Atoi(portText)
+		if !portIsNumeric || err != nil || port < 1 || port > 65535 {
+			return cfg, fmt.Errorf("invalid FALLBACK address %q: port must be between 1 and 65535", cfg.FallbackAddress)
+		}
 	}
 
 	if cfg.UDPReaders <= 0 {
@@ -476,7 +504,7 @@ func finalizeServerConfig(cfg ServerConfig) (ServerConfig, error) {
 }
 
 func (c ServerConfig) Address() string {
-	return fmt.Sprintf("%s:%d", c.UDPHost, c.UDPPort)
+	return net.JoinHostPort(c.UDPHost, strconv.Itoa(c.UDPPort))
 }
 
 func (c ServerConfig) DropLogInterval() time.Duration {
