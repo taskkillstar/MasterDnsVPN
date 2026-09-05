@@ -1,7 +1,17 @@
 name: Build and Release (Go)
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release Tag (e.g. v1.0.0-fork. Leave blank for auto timestamp)'
+        required: false
+        default: ''
+        type: string
+  push:
+    tags:
+      - 'v*'
+      - 'fork-v*'
 
 permissions:
   contents: write
@@ -29,10 +39,17 @@ jobs:
       - name: Generate Release Tag
         id: get_tag
         run: |
-          SHORT_SHA=$(echo ${GITHUB_SHA} | cut -c1-7)
-          TS=$(date -u +%Y.%m.%d.%H%M%S)
-          echo "tag=v${TS}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "Generated Tag: v${TS}-${SHORT_SHA}"
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            TAG="${{ inputs.release_tag }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            SHORT_SHA=$(echo ${GITHUB_SHA} | cut -c1-7)
+            TS=$(date -u +%Y.%m.%d.%H%M%S)
+            TAG="fork-v${TS}-${SHORT_SHA}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Generated Tag: ${TAG}"
 
   build:
     name: Build (matrix)

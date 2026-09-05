@@ -95,13 +95,20 @@ type clientCLIOptions struct {
 	showHelp      bool
 	domainsShort  string
 	keyShort      string
+	isScan        bool
+	scanAutoLocal bool
+	scanTop       int
+	scanApply     bool
 }
 
 func newClientFlagSet(output io.Writer) (*flag.FlagSet, *clientCLIOptions, *config.ClientConfigFlagBinder, error) {
 	fs := flag.NewFlagSet("masterdnsvpn-client", flag.ContinueOnError)
 	fs.SetOutput(output)
 
-	opts := &clientCLIOptions{}
+	opts := &clientCLIOptions{
+		scanTop:   32,
+		scanApply: true,
+	}
 	fs.Usage = func() {
 		printClientUsage(fs)
 	}
@@ -124,6 +131,13 @@ func newClientFlagSet(output io.Writer) (*flag.FlagSet, *clientCLIOptions, *conf
 
 	fs.BoolVar(&opts.showHelp, "help", false, "Show help and exit")
 	fs.BoolVar(&opts.showHelp, "h", false, "Alias for -help")
+
+	fs.BoolVar(&opts.isScan, "scan", false, "Run standalone resolver discovery & benchmark scan, then exit")
+	fs.BoolVar(&opts.scanAutoLocal, "scan-auto-local", false, "Include local network DNS and /24 neighborhood in scan")
+	fs.BoolVar(&opts.scanAutoLocal, "auto-local", false, "Alias for -scan-auto-local")
+	fs.IntVar(&opts.scanTop, "scan-top", 32, "Max number of top verified resolvers to display and save")
+	fs.IntVar(&opts.scanTop, "top", 32, "Alias for -scan-top")
+	fs.BoolVar(&opts.scanApply, "scan-apply", true, "Auto-save top ranked resolvers to managed header in resolvers file")
 
 	fs.StringVar(&opts.domainsShort, "d", "", "Alias for -domains (comma separated)")
 	fs.StringVar(&opts.keyShort, "k", "", "Alias for -encryption-key")
@@ -240,6 +254,24 @@ func main() {
 	}
 
 	app.PrintBanner()
+
+	if opts.isScan {
+		scanOpts := client.DefaultScanOptions()
+		scanOpts.IncludeLocalNet = opts.scanAutoLocal
+		scanOpts.TopN = opts.scanTop
+		scanOpts.AutoApply = opts.scanApply
+		scanOpts.ResolversPath = app.Config().ResolversPath()
+		scanOpts.OutputWriter = os.Stdout
+
+		scanCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+
+		if err := app.RunScanMode(scanCtx, scanOpts); err != nil {
+			fmt.Fprintf(os.Stderr, "Resolver scanner error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	log := app.Log()
 	if log != nil {

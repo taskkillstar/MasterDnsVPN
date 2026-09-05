@@ -1,0 +1,53 @@
+name: Upstream Sync
+
+on:
+  schedule:
+    - cron: '0 4 * * *' # Daily at 04:00 UTC
+  workflow_dispatch:      # Manual trigger button in GitHub UI
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout downstream main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Configure Git Author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch Upstream
+        run: |
+          git remote add upstream https://github.com/masterking32/MasterDnsVPN.git
+          git fetch upstream --no-tags
+
+      - name: Check and Merge Upstream
+        run: |
+          UPSTREAM_HASH=$(git rev-parse --short upstream/main)
+          if git merge-base --is-ancestor upstream/main main; then
+            echo "Branch 'main' is already up to date with upstream/main ($UPSTREAM_HASH)."
+            exit 0
+          fi
+
+          echo "Merging upstream/main ($UPSTREAM_HASH) into main..."
+          git merge --no-ff upstream/main -m "chore(upstream): sync upstream main ($UPSTREAM_HASH)"
+
+          echo "Running tests against synced core..."
+          go test ./...
+
+          echo "Pushing synced main to origin..."
+          git push origin main

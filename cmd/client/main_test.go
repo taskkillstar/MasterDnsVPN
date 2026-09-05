@@ -93,3 +93,23 @@ func TestParseClientCLIArgsIgnoresExecutableInjectedAsPositionalConfig(t *testin
 		}
 	})
 }
+
+func TestParseClientCLIArgsAcceptsScanFlags(t *testing.T) {
+	opts, _, err := parseClientCLIArgs([]string{"-scan", "-auto-local", "-top", "20", "-scan-apply=false"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("parseClientCLIArgs returned error: %v", err)
+	}
+	if !opts.isScan {
+		t.Fatalf("expected isScan=true, got %v", opts.isScan)
+	}
+	if !opts.scanAutoLocal {
+		t.Fatalf("expected scanAutoLocal=true, got %v", opts.scanAutoLocal)
+	}
+	if opts.scanTop != 20 {
+		t.Fatalf("expected scanTop=20, got %d", opts.scanTop)
+	}
+	if opts.scanApply {
+		t.Fatalf("expected scanApply=false, got %v", opts.scanApply)
+	}
+}
+
