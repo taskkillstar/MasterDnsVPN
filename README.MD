@@ -1,14 +1,36 @@
 # MasterDnsVPN Project 🔐
 
-## | 🇮🇷 [فارسی](https://github.com/masterking32/MasterDnsVPN/blob/main/README_FA.MD) | 🇬🇧 [English](https://github.com/masterking32/MasterDnsVPN/blob/main/README.MD) | 🇷🇺 [Русский](https://github.com/masterking32/MasterDnsVPN/blob/main/README_RU.MD) | 🇨🇳 [中文](https://github.com/masterking32/MasterDnsVPN/blob/main/README_ZH.MD) | 🇪🇸 [Español](https://github.com/masterking32/MasterDnsVPN/blob/main/README_ES.MD) | 🇮🇹 [Italiano](https://github.com/masterking32/MasterDnsVPN/blob/main/README_IT.MD) |
+> [!NOTE]
+> **Fork Notice:** This repository ([taskkillstar/MasterDnsVPN](https://github.com/taskkillstar/MasterDnsVPN)) is an enhanced, production-ready downstream fork of [masterking32/MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN). It serves as the high-performance Go core engine utilized by the [MasterDnsVPN Android Client](https://github.com/taskkillstar/MasterDnsVPN-AndroidClient), adding automated zero-touch resolver discovery, instant FastStart (<150ms boot), pipelined micro-burst speed qualification, dynamic active pool bounding, live console performance inspection, and critical resolver balancer fixes.
+
+---
+
+## 🚀 Fork Features & Fixes (vs. Upstream)
+
+Compared to the upstream project, this downstream release introduces substantial performance, usability, and stability improvements:
+
+### 🌟 New Features & Enhancements
+- **⚡ Instant FastStart (<150ms Startup):** Upstream tests all candidate resolvers synchronously at startup, which can block connection setup for 30–120+ seconds on large resolver lists. FastStart validates an initial minimal working set matching worker concurrency (`RX_TX_WORKERS`), brings the tunnel online in `<150ms`, and shifts full testing and background discovery to an asynchronous worker.
+- **🔍 Automated Zero-Touch Background Discovery (`BACKGROUND_DISCOVERY_ENABLED`):** Continuously sweeps candidate subnets (CIDRs like `/24`) and unprobed endpoints in the background without stalling foreground tunnel throughput, automatically testing MTU and promoting newly verified servers into the active pool.
+- **🌐 Local Network & Gateway Auto-Detection (`AUTO_DETECT_LOCAL_DNS` / `-auto-detect-local-dns`):** Inspects the host OS network interface (Windows, Linux, macOS) for active DHCP DNS servers and the default gateway, sweeping their local `/24` neighborhood in the background—enabling zero-configuration operation when connecting on new mobile SIMs, hotel Wi-Fi, or public hotspots.
+- **🛠️ Standalone Resolver Benchmark & Scanner CLI (`-scan`):** Dedicated standalone scanner using a two-phase "smart funnel" (rapid 350ms UDP liveness filter followed by deep MTU/RTT tests) to benchmark resolver lists in-memory without modifying `client_config.toml` or running proxy listeners (`-scan`, `-auto-local`, `-top`, `-scan-apply`).
+- **📁 Dual-Zone Resolver File Management (`AUTO_SAVE_RANKED_RESOLVERS`):** Automatically structures `client_resolvers.txt` into an auto-ranked managed header block (capped to `max(32, MAX_ACTIVE_RESOLVERS * 2)` with dynamic eviction of dead/slow servers) while strictly preserving user seed subnets, custom comments, and notes below.
+- **🏎️ Pipelined Micro-Burst Speed Qualification (`MICRO_BURST_TEST_ENABLED`):** Measures actual burst throughput (KB/s), packet loss ratio under load (`MAX_BURST_LOSS_RATIO`), and throttling behavior on candidate resolvers before activation, filtering out servers that pass single ping probes but collapse under sustained data transfers.
+- **🎯 Dynamic Active Resolver Pool Bounding (`MAX_ACTIVE_RESOLVERS`):** Bounds the active balancer pool to the top-N fastest resolvers (default: 15) while keeping passing servers on warm standby, preventing slow or jittery servers from dragging down aggregate tunnel speed.
+- **📊 Live Runtime Performance Monitoring & Interactive Keypress Inspection:** Real-time per-resolver packet accounting (sent/acked/lost), loss rates, and moving latency. Periodically logs performance summaries (`RUNTIME_STATS_INTERVAL_SECONDS`) and enables interactive on-demand console inspection at any time by pressing `s` + `Enter`.
+- **📐 Unified Resolver Quality Scoring:** Standardized speed and stability scoring formula (`score.go`) across MTU tests, micro-burst qualification, standalone `-scan` mode, and runtime balancing.
+
+### 🐛 Critical Bug Fixes
+- **Eliminated Resolver Probation Starvation in Strategy 6 (`LossThenLatency`):** Upstream strategy 6 suffered from probation starvation where resolvers could become permanently trapped in probation with no recovery path. Implemented a zero-RTT exploration path to guarantee continuous evaluation and fair rotation of healthy servers.
+- **Multi-Domain Startup Banner Display:** Resolved an issue where the startup banner only printed the first configured domain, now properly displaying all active tunnel domains.
+- **Optimized Out-of-the-Box Defaults:** Default balancing strategy upgraded to Strategy 6 (`LossThenLatency` with starvation fix), micro-burst testing enabled, and dynamic pool bounds configured for optimal real-world mobile and desktop performance.
+
+---
+
+> 💡 **Fork Enhancements Notation:** Throughout this document, new configuration knobs, command-line flags, and features introduced in this fork are marked with an asterisk (`*`).
 
 **MasterDnsVPN** is a scientific and research-oriented project for carrying TCP traffic through DNS queries and responses. In broad goal, it is similar to projects such as DNSTT or SlipStream, but it follows a fundamentally different structure and implementation approach.
 This system is designed around compatibility with many resolver behaviors and harsh network conditions, with the goal of preserving the highest possible stability and data delivery even in the worst cases.
-
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/masterking32/MasterDnsVPN)
-
-<a href="https://trendshift.io/repositories/23688" target="_blank"><img src="https://trendshift.io/api/badge/repositories/23688" alt="masterking32%2FMasterDnsVPN | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a> <a href="https://trendshift.io/repositories/23688?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-23688" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/23688/daily?language=Go" alt="masterking32%2FMasterDnsVPN | Trendshift" width="250" height="55"/></a> <a href="https://trendshift.io/repositories/23688?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-23688" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/23688/weekly?language=Go" alt="masterking32%2FMasterDnsVPN | Trendshift" width="250" height="55"/></a> <a href="https://trendshift.io/repositories/23688?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-23688" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/23688/monthly?language=Go" alt="masterking32%2FMasterDnsVPN | Trendshift" width="250" height="55"/></a>
-<a href="https://sourceforge.net/projects/masterdnsvpn/" target="_blank" rel="noopener noreferrer"><img src="https://a.fsdn.com/con/app/syndication/badge_img_direct/oss-rising-star/oss-rising-star/?variant_id=sf" alt="MasterDnsVPN | SourceForge" width="55" height="55"/></a>
 
 ### 📊 MasterDnsVPN Compared with Similar Projects
 
@@ -90,10 +112,15 @@ Every contribution and every piece of feedback is appreciated. Support directly 
 A brief overview of the main capabilities of MasterDnsVPN:
 
 - **Censorship resistance and harsh-network survivability:** 🛡️ Designed to work on filtered networks, unstable links, and strict MTU environments.
+- **Instant FastStart & Background Discovery:*** ⚡ Connects in `<150ms` using proven resolvers while sweeping candidate subnets and local OS DHCP DNS in the background.
 - **Lightweight custom protocol:** 🔄 Uses a custom protocol with retransmission logic to reduce overhead and increase usable DNS payload.
 - **Multipath and packet duplication:** 📡 Sends traffic through multiple paths and supports selective duplication to increase delivery probability on unstable networks.
-- **Smart resolver selection and health checks:** ⚡ Selects resolvers based on quality and health, and manages problematic resolvers automatically.
+- **Smart resolver selection and health checks:** ⚡ Selects resolvers based on quality and health, and manages problematic resolvers automatically (with Strategy 6 starvation fix *).
+- **Pipelined micro-burst throughput testing:*** 🏎️ Measures real burst speed and eliminates rate-limited/throttled resolvers.
+- **Dynamic active pool bounding:*** 🎯 Restricts active balancing to the top-N fastest servers (`MAX_ACTIVE_RESOLVERS`) with automatic standby promotion.
 - **MTU discovery and synchronization:** 🧰 Detects the practical MTU of working paths and aligns around it to reduce fragmentation and improve stability.
+- **Standalone scanner and benchmark tool:*** 🔍 Rapidly tests and ranks candidate resolver lists without modifying config files (`-scan`).
+- **Live performance monitoring & interactive inspection:*** 📊 Real-time per-resolver packet loss and latency tracking, plus interactive keypress inspection (`s` + Enter).
 - **SOCKS5 / SOCKS4 support and optimization:** 🧦 Optimized local proxy handling for common applications.
 - **Packed control blocks and lower control overhead:** 📦 Groups ACK/control traffic together to reduce control chatter.
 - **Optional compression and request packing:** 🗜️ Reduces request counts and improves efficiency under small-MTU conditions.
@@ -493,6 +520,8 @@ On Windows:
 
 Client and server support these command-line flags (all `client_config.toml` settings can also be overridden via CLI flags):
 
+> 💡 * Marked with an asterisk (`*`): Feature or parameter introduced or enhanced in this fork.
+
 | Parameter | Alias | Target | Description |
 | :--- | :--- | :--- | :--- |
 | `-config` | `-c` | Both | Path to the configuration file (default: `client_config.toml` / `server_config.toml`) |
@@ -502,6 +531,11 @@ Client and server support these command-line flags (all `client_config.toml` set
 | `-log` | `-l` | Both | Optional path to a log file |
 | `-version` | `-v` | Both | Print version and exit |
 | `-help` | `-h` | Both | Show help message and all available flag overrides |
+| `-scan` * | | Client | Run standalone resolver discovery & benchmark scan, then exit |
+| `-scan-auto-local` * | `-auto-local` | Client | Include local network DNS (DHCP) and /24 neighborhood in scan |
+| `-scan-top` * | `-top` | Client | Max number of top verified resolvers to display and save (default: 32) |
+| `-scan-apply` * | | Client | Auto-save top ranked resolvers to managed header in resolvers file (default: true) |
+| `-auto-detect-local-dns` * | | Client | Auto-detect local network DNS and gateway /24 on client startup |
 
 Example:
 
@@ -529,14 +563,14 @@ Accepted formats in `client_resolvers.txt`:
 
 - `IP` (IPv4 or `[IPv6]`)
 - `IP:PORT` (IPv4 or `[IPv6]:PORT`)
-- `CIDR` (e.g. `192.168.1.0/24`)
-- `CIDR:PORT` (e.g. `192.168.1.0/24:5300`)
+- `CIDR` * (e.g. `192.168.1.0/24` — automatically swept by background discovery)
+- `CIDR:PORT` * (e.g. `192.168.1.0/24:5300`)
 - Comments (lines starting with `#`)
 
 Example:
 
 ```text
-# >>> MASTERDNSVPN AUTO-RANKED BEST RESOLVERS (Do not edit this block) <<<
+# >>> MASTERDNSVPN AUTO-RANKED BEST RESOLVERS (Do not edit this block) <<< *
 # Last updated: 2026-08-17 18:00:00
 1.1.1.1
 8.8.8.8:53
@@ -551,7 +585,7 @@ Example:
 192.168.10.0/24:5300
 ```
 
-> 💡 **Smart Warm-Start:** The client preserves the exact line order of `client_resolvers.txt`. When `AUTO_SAVE_RANKED_RESOLVERS = true`, the client automatically tracks and persists the proven fastest resolvers at the top inside a managed header block. All custom comments, formatting, and subnets below the block remain untouched. FastStart uses these top entries to connect in <150ms on subsequent launches.
+> 💡 **Smart Warm-Start & Dual Architecture:*** The client preserves the exact line order of `client_resolvers.txt`. When `AUTO_SAVE_RANKED_RESOLVERS = true` *, the client automatically tracks and persists the proven fastest resolvers at the top inside a managed header block *. All custom comments, formatting, and subnets below the block remain untouched. FastStart * uses these top entries to connect in <150ms on subsequent launches.
 
 ---
 
@@ -579,6 +613,8 @@ These settings are critical on the server:
 ---
 
 ## Section 3.4: 📘 Client Configuration Variables (`client_config.toml`)
+
+> 💡 Parameters marked with an asterisk (`*`) are new knobs or enhancements introduced in this fork.
 
 ### 3.4.1) 🧭 Tunnel Identity and Security
 
@@ -617,13 +653,16 @@ These settings are critical on the server:
 
 | Parameter | Sample Value | Allowed Values / Real Behavior | Full Explanation |
 | :--- | :--- | :--- | :--- |
-| `RESOLVER_BALANCING_STRATEGY` | `6` | `0..8` | Chooses how resolvers are selected.<br>`0/2` = Round Robin, `1` = Random, `3` = Least Loss, `4` = Lowest Latency, `5` = Hybrid Score, `6` = Loss Then Latency (Default), `7` = Least Loss Top Random, `8` = Least Loss Top Round Robin.<br>The hybrid mode uses a weighted combined score. The loss-then-latency mode first shortlists by loss, then prefers lower latency inside that tier, and rotates among near-equal top candidates. The top-random mode picks randomly from the best loss tier so load does not stick to one resolver. The top-round-robin mode cycles through the same top loss tier with deterministic rotation. |
+| `RESOLVER_BALANCING_STRATEGY` * | `6` | `0..8` | Chooses how resolvers are selected.<br>`0/2` = Round Robin, `1` = Random, `3` = Least Loss, `4` = Lowest Latency, `5` = Hybrid Score, `6` = Loss Then Latency (* Default in fork, enhanced with probation starvation fix and zero-RTT exploration), `7` = Least Loss Top Random, `8` = Least Loss Top Round Robin.<br>The hybrid mode uses a weighted combined score. The loss-then-latency mode first shortlists by loss, then prefers lower latency inside that tier, and rotates among near-equal top candidates. The top-random mode picks randomly from the best loss tier so load does not stick to one resolver. The top-round-robin mode cycles through the same top loss tier with deterministic rotation. |
 | `PACKET_DUPLICATION_COUNT` | `2` | clamp to valid range in code | Normal outgoing packet duplication count.<br>Higher values increase traffic cost but improve survivability on weak links. |
 | `SETUP_PACKET_DUPLICATION_COUNT` | `2` | clamp to valid range in code | Similar to `PACKET_DUPLICATION_COUNT`, but used for setup-sensitive packets such as stream creation and other critical control events. |
 | `STREAM_RESOLVER_FAILOVER_RESEND_THRESHOLD` | `2` | If `<1`, fallback applies | If a stream accumulates repeated resend pressure on the same preferred resolver, the client may fail over that stream to another resolver.<br>This threshold controls how quickly that happens. |
 | `STREAM_RESOLVER_FAILOVER_COOLDOWN` | `2.5` | If `<=0`, fallback applies | Minimum delay between two failovers for the same stream.<br>This prevents unstable oscillation between resolvers. |
-| `RECHECK_INACTIVE_SERVERS_ENABLED` | `true` | `true/false` | Enables background rechecks for currently disabled or unhealthy resolvers.<br>Also activates **FastStart**: client connects immediately once `RX_TX_WORKERS` working resolvers are validated, then discovers remaining resolvers in the background.<br>If disabled, once a resolver becomes unusable, it will stay disabled until restart, and initial startup will synchronously scan 100% of resolvers. |
-| `AUTO_SAVE_RANKED_RESOLVERS` | `true` | `true/false` | Automatically saves the top-performing resolvers to the managed header of `client_resolvers.txt`.<br>On next startup, FastStart uses these proven fastest resolvers immediately without scanning the entire pool from scratch.<br>Preserves all user comments, formatting, and custom CIDRs below the managed block. |
+| `RECHECK_INACTIVE_SERVERS_ENABLED` * | `true` | `true/false` | Enables background rechecks for currently disabled or unhealthy resolvers.<br>Also activates **FastStart:*** client connects immediately once `RX_TX_WORKERS` working resolvers are validated, then discovers remaining resolvers in the background.<br>If disabled, once a resolver becomes unusable, it will stay disabled until restart, and initial startup will synchronously scan 100% of resolvers. |
+| `AUTO_SAVE_RANKED_RESOLVERS` * | `true` | `true/false` | Automatically saves the top-performing resolvers to the managed header of `client_resolvers.txt` *.<br>On next startup, FastStart uses these proven fastest resolvers immediately without scanning the entire pool from scratch.<br>Preserves all user comments, formatting, and custom CIDRs below the managed block. |
+| `BACKGROUND_DISCOVERY_ENABLED` * | `true` | `true/false` | Enables asynchronous background discovery of candidate subnets (CIDRs) and unprobed endpoints.<br>Discovered resolvers are verified and promoted into the active pool with zero impact on foreground tunnel latency. |
+| `BACKGROUND_DISCOVERY_WORKERS` * | `4` | `1..8` | Number of concurrent workers allocated for background resolver discovery. Lower values protect foreground latency on mobile or constrained links. |
+| `AUTO_DETECT_LOCAL_DNS` * | `true` | `true/false` | Automatically detects host OS network DNS servers (DHCP) and default gateway, sweeping their `/24` neighborhood in the background.<br>Provides zero-touch discovery when switching Wi-Fi networks or mobile SIMs. |
 | `AUTO_DISABLE_TIMEOUT_SERVERS` | `true` | `true/false` | Enables automatic disabling of resolvers that keep timing out and show no successful activity. |
 | `AUTO_DISABLE_TIMEOUT_WINDOW_SECONDS` | `30.0` | If `<=0`, fallback applies | Time window used to decide whether a resolver is timeout-only.<br>If all observations in this window are timeouts, it may be disabled. |
 | `BASE_ENCODE_DATA` | `false` | `true/false` | If enabled, payloads are encoded in a base-safe format before tunneling.<br>This usually reduces payload efficiency, but can help in strict resolver environments. |
@@ -655,24 +694,24 @@ These settings are critical on the server:
 | `MTU_ADDED_SERVER_LOG_FORMAT` | `"Resolver {IP} ({DOMAIN}) added back at {TIME} (UP {UP_MTU}, DOWN {DOWN_MTU})"` | string | Log/output format when a resolver is restored. |
 | `MTU_REACTIVE_ADDED_SERVER_LOG_FORMAT` | `"Resolver {IP} ({DOMAIN}) added back at {TIME} after reactive recheck (UP {UP_MTU}, DOWN {DOWN_MTU})"` | string | Log/output format when a resolver is restored by background health checks. |
 
-### 3.4.7) ⚡ Micro-Burst Throughput Testing and Speed Qualification
+### 3.4.7) ⚡ Micro-Burst Throughput Testing and Speed Qualification *
 
 | Parameter | Sample Value | Allowed Values / Real Behavior | Full Explanation |
 | :--- | :--- | :--- | :--- |
-| `MICRO_BURST_TEST_ENABLED` | `true` | `true/false` | If enabled, runs pipelined micro-burst qualification after MTU testing to measure burst throughput, packet loss under load, and rate-limiting behavior. |
-| `MICRO_BURST_PACKET_COUNT` | `6` | `2..32` | Number of pipelined queries sent to each candidate resolver during the burst test. |
-| `MICRO_BURST_PARALLELISM` | `8` | `1..128` | Concurrency for micro-burst qualification. Recommended `6-8` for Android/mobile, `16-32` for desktop/server. |
-| `MAX_ACTIVE_RESOLVERS` | `15` | `>=0` | Maximum number of highest-scoring resolvers activated in the primary pool (`0` = no limit). Remaining passing servers are placed on standby. |
-| `MAX_BURST_LOSS_RATIO` | `0.20` | `0.0..1.0` | Maximum tolerated packet loss ratio during burst testing before a resolver is rejected (`0.20` = 20% loss). |
-| `MIN_BURST_THROUGHPUT_KBPS` | `0.0` | `>=0.0` | Optional minimum throughput cutoff in KB/s (`0.0` disables cutoff). |
-| `RECHECK_BURST_TEST_ENABLED` | `true` | `true/false` | If enabled, background health rechecks test inactive resolvers with a micro-burst before reactivating them. |
-| `RECHECK_BURST_PACKET_COUNT` | `4` | `2..32` | Number of pipelined queries sent during background health recheck burst tests. |
+| `MICRO_BURST_TEST_ENABLED` * | `true` | `true/false` | If enabled, runs pipelined micro-burst qualification after MTU testing to measure burst throughput, packet loss under load, and rate-limiting behavior. |
+| `MICRO_BURST_PACKET_COUNT` * | `6` | `2..32` | Number of pipelined queries sent to each candidate resolver during the burst test. |
+| `MICRO_BURST_PARALLELISM` * | `8` | `1..128` | Concurrency for micro-burst qualification. Recommended `6-8` for Android/mobile, `16-32` for desktop/server. |
+| `MAX_ACTIVE_RESOLVERS` * | `15` | `>=0` | Maximum number of highest-scoring resolvers activated in the primary pool (`0` = no limit). Remaining passing servers are placed on standby. |
+| `MAX_BURST_LOSS_RATIO` * | `0.20` | `0.0..1.0` | Maximum tolerated packet loss ratio during burst testing before a resolver is rejected (`0.20` = 20% loss). |
+| `MIN_BURST_THROUGHPUT_KBPS` * | `0.0` | `>=0.0` | Optional minimum throughput cutoff in KB/s (`0.0` disables cutoff). |
+| `RECHECK_BURST_TEST_ENABLED` * | `true` | `true/false` | If enabled, background health rechecks test inactive resolvers with a micro-burst before reactivating them. |
+| `RECHECK_BURST_PACKET_COUNT` * | `4` | `2..32` | Number of pipelined queries sent during background health recheck burst tests. |
 
-### 3.4.8) 📊 Live Runtime Resolver Performance Monitoring
+### 3.4.8) 📊 Live Runtime Resolver Performance Monitoring *
 
 | Parameter | Sample Value | Allowed Values / Real Behavior | Full Explanation |
 | :--- | :--- | :--- | :--- |
-| `RUNTIME_STATS_INTERVAL_SECONDS` | `60.0` | `1.0..86400.0` (or `0` = disabled) | Interval in seconds between periodic console performance table logs when tunnel traffic is active.<br>Setting to `0` disables periodic logging.<br>Pressing `'s'` + Enter (or Enter) in the console always triggers an immediate live stats dump on demand regardless of the timer. |
+| `RUNTIME_STATS_INTERVAL_SECONDS` * | `60.0` | `1.0..86400.0` (or `0` = disabled) | Interval in seconds between periodic console performance table logs when tunnel traffic is active.<br>Setting to `0` disables periodic logging.<br>Pressing `'s'` + Enter (or Enter) in the console always triggers an immediate live stats dump on demand regardless of the timer. * |
 
 ### 3.4.9) 🧵 Runtime Workers, Queues, and Timers
 
@@ -862,16 +901,16 @@ The client applies these limits immediately before normal runtime starts.
 
 ---
 
-## Section 3.6: 🧪 Testing, Finding, and Scanning Resolvers
+## Section 3.6: 🧪 Testing, Finding, and Scanning Resolvers *
 
-Finding suitable resolvers is one of the most critical aspects of DNS tunneling. In MasterDnsVPN, resolver discovery is designed to be **completely automated, non-destructive, and effortless**. You never need to edit or back up your configuration files to scan for resolvers.
+Finding suitable resolvers is one of the most critical aspects of DNS tunneling. In MasterDnsVPN, resolver discovery is designed to be **completely automated, non-destructive, and effortless***. You never need to edit or back up your configuration files to scan for resolvers.
 
-### 💡 How `client_resolvers.txt` Works (Dual Architecture)
+### 💡 How `client_resolvers.txt` Works (Dual Architecture) *
 
 The client automatically organizes `client_resolvers.txt` into two distinct zones:
 
 ```text
-# >>> MASTERDNSVPN AUTO-RANKED BEST RESOLVERS (Do not edit this block) <<<
+# >>> MASTERDNSVPN AUTO-RANKED BEST RESOLVERS (Do not edit this block) <<< *
 # Last updated: 2026-09-04 22:00:00
 194.225.70.1
 185.51.200.2:53
@@ -884,12 +923,12 @@ The client automatically organizes `client_resolvers.txt` into two distinct zone
 8.8.8.8
 ```
 
-1. **The Managed Header Block (Top):** Holds verified, high-performance resolvers ranked by throughput, latency, and stability. FastStart uses these to connect in **<150ms**. Stale resolvers from old networks are automatically demoted and pruned.
+1. **The Managed Header Block (Top):*** Holds verified, high-performance resolvers ranked by throughput, latency, and stability. FastStart uses these to connect in **<150ms**. Stale resolvers from old networks are automatically demoted and pruned.
 2. **The User Seed Area (Below):** Holds candidate subnets (e.g. `194.225.150.0/24`), Anycast fallbacks, and personal notes. **This area is strictly immutable** and will never be deleted or overwritten by the client.
 
 ---
 
-### Option A: Zero-Touch Background Discovery (Recommended for Normal Use) ⚡
+### Option A: Zero-Touch Background Discovery (Recommended for Normal Use) ⚡ *
 
 You don't need to run a scanner—the client can discover and benchmark resolvers automatically while you use the tunnel:
 
@@ -898,10 +937,10 @@ You don't need to run a scanner—the client can discover and benchmark resolver
    ```bash
    masterdnsvpn-client
    ```
-3. **FastStart** connects in `<150ms` using the top proven resolvers.
+3. **FastStart*** connects in `<150ms` using the top proven resolvers.
 4. In the background, a paced discovery engine evaluates candidate subnets, tests responsive servers with full MTU probes, promotes healthy ones into the active pool, and persists winners to the managed header block automatically!
 
-> 💡 **New Network / SIM Auto-Discovery:** When traveling or switching to a new mobile SIM or Wi-Fi network, launch with `-auto-detect-local-dns`:
+> 💡 **New Network / SIM Auto-Discovery:*** When traveling or switching to a new mobile SIM or Wi-Fi network, launch with `-auto-detect-local-dns`:
 > ```bash
 > masterdnsvpn-client -auto-detect-local-dns
 > ```
@@ -909,7 +948,7 @@ You don't need to run a scanner—the client can discover and benchmark resolver
 
 ---
 
-### Option B: Dedicated Standalone Scanner & Benchmark (`-scan`) 🔍
+### Option B: Dedicated Standalone Scanner & Benchmark (`-scan`) 🔍 *
 
 If you want to test a list of resolvers, find what works on a new network, or benchmark servers before connecting, use the dedicated `-scan` command:
 
@@ -942,7 +981,7 @@ masterdnsvpn-client -scan -resolvers candidates.txt -scan-apply=false -top 15
 
 ---
 
-### 🛡️ Managed Resolver Cap & Auto-Pruning
+### 🛡️ Managed Resolver Cap & Auto-Pruning *
 
 To prevent `client_resolvers.txt` from growing uncontrollably when scanning large subnets (such as a `/20` with 4,096 IPs), the number of resolvers saved to the managed header block is strictly capped:
 
@@ -978,7 +1017,9 @@ If you set it too low:
 
 ## Section 4: Mobile Usage Guide (Android and iPhone) 📱
 
-Since there is currently no official Android or iOS application published directly by us, you can still use the tunnel on mobile with one of these methods. You can also use Android clients built by other developers that are introduced in Section 5.1.
+> 💡 **Native Android Client:** For mobile devices, you can use the official [MasterDnsVPN Android Client](https://github.com/taskkillstar/MasterDnsVPN-AndroidClient), which embeds this fork's Go core via gomobile with native VPN service, FastStart, and background discovery support.
+
+Since there is currently no official iOS application published directly by us, you can still use the tunnel on mobile with one of these methods. You can also use Android clients built by other developers that are introduced in Section 5.1.
 
 ### Method 1: Share the proxy from your computer 📶
 
@@ -1178,11 +1219,10 @@ sequenceDiagram
 
 ## 🤝 Contributing
 
-We welcome all contributions. If you have an idea, bug report, or performance improvement, please open an Issue or Pull Request.
+We welcome all contributions. If you have an idea, bug report, or performance improvement for this fork, please open an Issue or Pull Request:
 
-[Issues](https://github.com/masterking32/MasterDnsVPN/issues)
-
-[Pull Requests](https://github.com/masterking32/MasterDnsVPN/pulls)
+- **Fork Issues & PRs:** [taskkillstar/MasterDnsVPN Issues](https://github.com/taskkillstar/MasterDnsVPN/issues) | [Pull Requests](https://github.com/taskkillstar/MasterDnsVPN/pulls)
+- **Upstream Issues & PRs:** [masterking32/MasterDnsVPN Issues](https://github.com/masterking32/MasterDnsVPN/issues) | [Pull Requests](https://github.com/masterking32/MasterDnsVPN/pulls)
 
 ---
 
@@ -1192,6 +1232,7 @@ This project is published under the **MIT** license. For more details, see the `
 
 ---
 
-## 👨‍💻 Developer
+## 👨‍💻 Developer & Fork Maintainers
 
-Developed with ❤️ by: [**MasterkinG32**](https://github.com/masterking32)
+- **Original Author & Upstream Developer:** Developed with ❤️ by [**MasterkinG32**](https://github.com/masterking32)
+- **Downstream Fork & Android Client Engine:** Maintained by [**taskkillstar**](https://github.com/taskkillstar)
