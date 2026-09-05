@@ -51,6 +51,9 @@ type ClientConfig struct {
 	StreamResolverFailoverCooldownSec     float64           `toml:"STREAM_RESOLVER_FAILOVER_COOLDOWN"`
 	RecheckInactiveServersEnabled         bool              `toml:"RECHECK_INACTIVE_SERVERS_ENABLED"`
 	AutoSaveRankedResolvers               bool              `toml:"AUTO_SAVE_RANKED_RESOLVERS"`
+	BackgroundDiscoveryEnabled            bool              `toml:"BACKGROUND_DISCOVERY_ENABLED"`
+	BackgroundDiscoveryWorkers            int               `toml:"BACKGROUND_DISCOVERY_WORKERS"`
+	AutoDetectLocalDns                    bool              `toml:"AUTO_DETECT_LOCAL_DNS"`
 	AutoDisableTimeoutServers             bool              `toml:"AUTO_DISABLE_TIMEOUT_SERVERS"`
 	AutoDisableTimeoutWindowSeconds       float64           `toml:"AUTO_DISABLE_TIMEOUT_WINDOW_SECONDS"`
 	BaseEncodeData                        bool              `toml:"BASE_ENCODE_DATA"`
@@ -167,6 +170,9 @@ func defaultClientConfig() ClientConfig {
 		StreamResolverFailoverCooldownSec:     2.5,
 		RecheckInactiveServersEnabled:         true,
 		AutoSaveRankedResolvers:               true,
+		BackgroundDiscoveryEnabled:            true,
+		BackgroundDiscoveryWorkers:            4,
+		AutoDetectLocalDns:                    true,
 		AutoDisableTimeoutServers:             true,
 		AutoDisableTimeoutWindowSeconds:       30.0,
 		BaseEncodeData:                        false,

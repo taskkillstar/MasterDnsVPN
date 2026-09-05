@@ -5,17 +5,28 @@
 # Year: 2026
 # ==============================================================================
 
-# One resolver per line.
+# >>> MASTERDNSVPN AUTO-RANKED BEST RESOLVERS (Do not edit this block) <<<
+# Verified fast resolvers will be saved here automatically on launch.
+# <<< END MASTERDNSVPN AUTO-RANKED BEST RESOLVERS >>>
+
+# ==============================================================================
+# USER SEED & CANDIDATE RESOLVERS (Strictly Preserved)
 # Supported formats:
 #   8.8.8.8
 #   1.1.1.1:5353
-#   192.168.1.0/30
-#   192.168.1.0/30:5353
+#   192.168.1.0/24
+#   192.168.1.0/24:5353
 #   [2001:4860:4860::8888]:53
 #
 # Line order is preserved during startup.
-# When AUTO_SAVE_RANKED_RESOLVERS is enabled, the client automatically persists
-# the highest-scoring resolvers in a managed header block above custom entries.
+# FastStart boots immediately using the top working resolvers.
+# Background discovery sweeps candidate subnets and promotes verified champions
+# into the managed block above. All custom entries below remain untouched.
+# ==============================================================================
 
+# Universal Anycast seeds for initial connection:
+1.1.1.1
 8.8.8.8
-
+9.9.9.9
+208.67.222.222:5353
+4.2.2.4

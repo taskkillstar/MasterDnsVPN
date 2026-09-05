@@ -438,6 +438,9 @@ func (c *Client) Run(ctx context.Context) error {
 				if c.cfg.RuntimeStatsIntervalSeconds > 0 {
 					go c.runRuntimeStatsLoop(ctx)
 				}
+				if c.cfg.BackgroundDiscoveryEnabled {
+					go c.startBackgroundDiscovery(ctx)
+				}
 				c.startInteractiveConsoleListener(ctx)
 				c.printRuntimeStatsHint()
 			}

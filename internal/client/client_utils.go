@@ -549,6 +549,13 @@ func (c *Client) Balancer() *Balancer {
 	return c.balancer
 }
 
+func (c *Client) Config() config.ClientConfig {
+	if c == nil {
+		return config.ClientConfig{}
+	}
+	return c.cfg
+}
+
 func (c *Client) ShortPrintBanner() {
 	if c.log == nil {
 		return

@@ -149,6 +149,19 @@ RECHECK_INACTIVE_SERVERS_ENABLED = true
 # On subsequent runs, FastStart boots immediately using the proven fastest servers.
 AUTO_SAVE_RANKED_RESOLVERS = true
 
+# If true, the client runs an asynchronous background discovery worker that sweeps
+# unprobed candidate subnets and promotes newly qualified resolvers into the active pool.
+BACKGROUND_DISCOVERY_ENABLED = true
+
+# Number of parallel workers used for background candidate discovery.
+# Clamped to [1, 8]. Lower values ensure zero impact on foreground tunnel latency.
+BACKGROUND_DISCOVERY_WORKERS = 4
+
+# If true, automatically queries the host OS for active network DNS servers (DHCP / static)
+# and default gateway, and sweeps their /24 neighborhood in the background.
+# Essential for zero-touch discovery on new mobile SIMs, hotel Wi-Fi, and captive portals.
+AUTO_DETECT_LOCAL_DNS = true
+
 # If true, a resolver is runtime-disabled when it stays timeout-only across the
 # configured window and enough observations have been collected.
 AUTO_DISABLE_TIMEOUT_SERVERS = true

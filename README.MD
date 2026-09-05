@@ -864,51 +864,92 @@ The client applies these limits immediately before normal runtime starts.
 
 ## Section 3.6: 🧪 Testing, Finding, and Scanning Resolvers
 
-Finding suitable resolvers is one of the most important parts of any DNS tunnel project. In this project, the client can automatically find healthy resolvers and test their MTU.
-You can use this client feature to discover healthy resolvers, test your own resolvers, or scan resolver ranges.
-Just place all IPs line by line into `client_resolvers.txt`.
+Finding suitable resolvers is one of the most critical aspects of DNS tunneling. In MasterDnsVPN, resolver discovery is designed to be **completely automated, non-destructive, and effortless**. You never need to edit or back up your configuration files to scan for resolvers.
 
-Then back up your current `client_config.toml`, open it with a text editor, and replace the following values with these suggested ones:
+### 💡 How `client_resolvers.txt` Works (Dual Architecture)
 
-- Lower the MTU ceiling so you find all servers that really behave as DNS servers, and make Min and Max equal to speed up scanning by avoiding automatic binary-search style probing.
+The client automatically organizes `client_resolvers.txt` into two distinct zones:
 
-```toml
-MIN_UPLOAD_MTU=30
-MIN_DOWNLOAD_MTU=40
-MAX_UPLOAD_MTU=30
-MAX_DOWNLOAD_MTU=40
+```text
+# >>> MASTERDNSVPN AUTO-RANKED BEST RESOLVERS (Do not edit this block) <<<
+# Last updated: 2026-09-04 22:00:00
+194.225.70.1
+185.51.200.2:53
+# <<< END MASTERDNSVPN AUTO-RANKED BEST RESOLVERS >>>
+
+# --- USER SEED & CANDIDATE AREA (Strictly Preserved) ---
+# Add your candidate subnets, Anycast fallbacks, and personal notes below:
+194.225.150.0/24
+1.1.1.1:5353
+8.8.8.8
 ```
 
-- Increase the number of parallel resolver checks:
+1. **The Managed Header Block (Top):** Holds verified, high-performance resolvers ranked by throughput, latency, and stability. FastStart uses these to connect in **<150ms**. Stale resolvers from old networks are automatically demoted and pruned.
+2. **The User Seed Area (Below):** Holds candidate subnets (e.g. `194.225.150.0/24`), Anycast fallbacks, and personal notes. **This area is strictly immutable** and will never be deleted or overwritten by the client.
 
-```toml
-MTU_TEST_PARALLELISM = 200
+---
+
+### Option A: Zero-Touch Background Discovery (Recommended for Normal Use) ⚡
+
+You don't need to run a scanner—the client can discover and benchmark resolvers automatically while you use the tunnel:
+
+1. Add your candidate subnets (e.g. `194.225.150.0/24`) to the bottom of `client_resolvers.txt`.
+2. Start the client normally:
+   ```bash
+   masterdnsvpn-client
+   ```
+3. **FastStart** connects in `<150ms` using the top proven resolvers.
+4. In the background, a paced discovery engine evaluates candidate subnets, tests responsive servers with full MTU probes, promotes healthy ones into the active pool, and persists winners to the managed header block automatically!
+
+> 💡 **New Network / SIM Auto-Discovery:** When traveling or switching to a new mobile SIM or Wi-Fi network, launch with `-auto-detect-local-dns`:
+> ```bash
+> masterdnsvpn-client -auto-detect-local-dns
+> ```
+> The client automatically reads your current connection's DHCP DNS and gateway, derives their `/24` neighborhood, and benchmarks them in the background with zero manual input!
+
+---
+
+### Option B: Dedicated Standalone Scanner & Benchmark (`-scan`) 🔍
+
+If you want to test a list of resolvers, find what works on a new network, or benchmark servers before connecting, use the dedicated `-scan` command:
+
+```bash
+# 1. Scan existing client_resolvers.txt and auto-update the managed header with top 32
+masterdnsvpn-client -scan
+
+# 2. Auto-detect local network (DHCP DNS, gateway, /24 subnet) and save top 20
+masterdnsvpn-client -scan -auto-local -top 20
+
+# 3. Benchmark an external candidate list without modifying your main resolvers file
+masterdnsvpn-client -scan -resolvers candidates.txt -scan-apply=false -top 15
 ```
 
-- Save healthy resolver results into a text file for later review:
+#### Key Advantages of `-scan` Mode:
+- **Zero Config Tampering:** Operates entirely in memory—no backing up or modifying `client_config.toml`.
+- **Two-Phase "Smart Funnel":** Rapid 350ms liveness checks weed out dead IPs instantly, running deep MTU/RTT tests only on responsive DNS servers.
+- **Clean Exit:** Displays a formatted benchmark table and exits immediately (`0` exit code) without binding SOCKS5/TCP proxy listeners or requiring Ctrl+C.
+- **Unified Quality Scoring:** Evaluates resolvers using the exact same speed and stability formula used by the active tunnel balancer:
 
-```toml
-SAVE_MTU_SERVERS_TO_FILE = true
+```text
+┌──────┬─────────────────────────┬──────────┬──────────┬──────────┬─────────────┬──────────┬───────────┐
+│ Rank │ Resolver Endpoint       │ Ping/RTT │ Upload   │ Download │ Speed Est.  │ Score    │ Quality   │
+├──────┼─────────────────────────┼──────────┼──────────┼──────────┼─────────────┼──────────┼───────────┤
+│    1 │ 194.225.70.1:53         │ 28ms     │ 140 B    │ 1420 B   │ 49.5 KB/s   │ 46.9     │ EXCELLENT │
+│    2 │ 185.51.200.2:53         │ 34ms     │ 140 B    │ 1280 B   │ 36.8 KB/s   │ 34.4     │ GOOD      │
+│    3 │ 1.1.1.1:5353            │ 62ms     │ 140 B    │ 1400 B   │ 22.0 KB/s   │ 19.6     │ FAIR      │
+└──────┴─────────────────────────┴──────────┴──────────┴──────────┴─────────────┴──────────┴───────────┘
 ```
 
-- Change the output format so only the IP is written, which is easier to reuse:
+---
 
-```toml
-MTU_SERVERS_FILE_FORMAT = "{IP}"
-```
+### 🛡️ Managed Resolver Cap & Auto-Pruning
 
-- Reduce retries and timeout to speed up the scan. With these settings you may miss some slightly slower but still healthy resolvers, so increase them if you want more accurate results.
+To prevent `client_resolvers.txt` from growing uncontrollably when scanning large subnets (such as a `/20` with 4,096 IPs), the number of resolvers saved to the managed header block is strictly capped:
 
-```toml
-MTU_TEST_RETRIES = 1
-MTU_TEST_TIMEOUT = 1.0
-```
-
-> ⚠️ **Important note:** You must already have a server running and must place its key and domain into `client_config.toml` before doing this. Otherwise the client cannot perform MTU tests correctly and will likely mark all resolvers invalid.
-
-Now run the program and wait for the tests to finish. After the process completes, close the program. You will find the saved resolver list in a new `.txt` file next to the main file, and you can then use it as your new `client_resolvers.txt`.
-
-After that, return to your previous settings and use the healthy resolvers you discovered for the best performance.
+- **Background Discovery Limit:** Automatically capped at `max(32, MAX_ACTIVE_RESOLVERS * 2)`. With default `MAX_ACTIVE_RESOLVERS = 15`, at most **32 top-ranked resolvers** are stored in the managed block.
+- **Standalone `-scan` Limit:** Controlled directly with the `-top` flag (e.g. `masterdnsvpn-client -scan -top 20`; defaults to 32).
+- **Dynamic Eviction:** If newly discovered resolvers perform better, or when you switch networks and previous resolvers become unreachable, dead/slow servers are automatically pushed out and replaced by the new top performers.
+- **Instant FastStart Guarantee:** By keeping the managed header tightly bounded to proven champions, subsequent launches always validate within `<150ms`.
 
 ---
 
