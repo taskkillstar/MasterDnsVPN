@@ -113,7 +113,7 @@ func (c *Client) ScanAndRankResolvers(ctx context.Context, candidates []config.R
 				}
 
 				// Phase 1: Rapid liveness probe (350ms timeout, 0 retries)
-				transport, err := newUDPQueryTransport(conn.ResolverLabel)
+				transport, err := c.newUDPQueryTransport(ctx, conn.ResolverLabel)
 				if err != nil {
 					totalCompleted.Add(1)
 					continue

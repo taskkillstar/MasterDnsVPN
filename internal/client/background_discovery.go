@@ -117,7 +117,7 @@ func (c *Client) startBackgroundDiscovery(ctx context.Context) {
 				}
 
 				// Phase 1: Rapid liveness check (350ms, quiet)
-				transport, err := newUDPQueryTransport(conn.ResolverLabel)
+				transport, err := c.newUDPQueryTransport(ctx, conn.ResolverLabel)
 				if err != nil {
 					continue
 				}

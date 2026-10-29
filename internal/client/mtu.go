@@ -692,7 +692,7 @@ func (c *Client) recheckInactiveResolver(ctx context.Context, conn Connection) {
 		return
 	}
 
-	transport, err := newUDPQueryTransport(conn.ResolverLabel)
+	transport, err := c.newUDPQueryTransport(ctx, conn.ResolverLabel)
 	if err != nil {
 		return
 	}
@@ -847,7 +847,7 @@ func (c *Client) confirmResolverDown(conn *Connection, window time.Duration) boo
 		return true
 	}
 
-	transport, err := newUDPQueryTransport(conn.ResolverLabel)
+	transport, err := c.newUDPQueryTransport(context.Background(), conn.ResolverLabel)
 	if err != nil {
 		return true
 	}
@@ -1006,7 +1006,7 @@ func (c *Client) runConnectionMTUTest(ctx context.Context, conn Connection, serv
 func (c *Client) probeConnectionMTU(ctx context.Context, conn Connection, maxUploadPayload int) (mtuConnectionProbeResult, mtuRejectReason) {
 	var result mtuConnectionProbeResult
 
-	probeTransport, err := newUDPQueryTransport(conn.ResolverLabel)
+	probeTransport, err := c.newUDPQueryTransport(ctx, conn.ResolverLabel)
 	if err != nil {
 		return result, mtuRejectUpload
 	}
