@@ -44,7 +44,30 @@ jobs:
           fi
 
           echo "Merging upstream/main ($UPSTREAM_HASH) into main..."
-          git merge --no-ff upstream/main -m "chore(upstream): sync upstream main ($UPSTREAM_HASH)"
+          if ! git merge --no-ff upstream/main -m "chore(upstream): sync upstream main ($UPSTREAM_HASH)"; then
+            echo "Merge encountered conflicts; checking for deleted translation files..."
+            has_other_conflicts=false
+            while IFS= read -r line; do
+              file="${line:3}"
+              case "$file" in
+                README_*.MD)
+                  echo "Auto-removing upstream translation file: $file"
+                  git rm -f --ignore-unmatch "$file" 2>/dev/null || true
+                  ;;
+                *)
+                  echo "Found non-translation conflict: $line"
+                  has_other_conflicts=true
+                  ;;
+              esac
+            done < <(git status --porcelain)
+
+            if [ "$has_other_conflicts" = "true" ]; then
+              echo "ERROR: Unresolved merge conflicts exist beyond deleted translation files." >&2
+              exit 1
+            fi
+
+            git commit -m "chore(upstream): sync upstream main ($UPSTREAM_HASH)"
+          fi
 
           echo "Running tests against synced core..."
           go test ./...

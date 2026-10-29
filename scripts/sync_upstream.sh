@@ -65,14 +65,34 @@ echo "Merging $REF ($UPSTREAM_HASH) into main..."
 if git merge --no-ff "$REF" -m "chore(upstream): sync upstream main ($UPSTREAM_HASH)"; then
   echo "Successfully merged $REF."
 else
-  echo ""
-  echo "======================================================================" >&2
-  echo "CONFLICT: Merge conflicts detected!" >&2
-  echo "Resolve the conflicts, run tests, and commit with:" >&2
-  echo "  git commit" >&2
-  echo "(git rerere will record your resolutions for future merges)" >&2
-  echo "======================================================================" >&2
-  exit 1
+  # Check if conflicts are exclusively from deleted translation READMEs
+  has_other_conflicts=false
+  while IFS= read -r line; do
+    file="${line:3}"
+    case "$file" in
+      README_*.MD)
+        echo "Auto-removing upstream translation file: $file"
+        git rm -f --ignore-unmatch "$file" 2>/dev/null || true
+        ;;
+      *)
+        has_other_conflicts=true
+        ;;
+    esac
+  done < <(git status --porcelain)
+
+  if [ "$has_other_conflicts" = "false" ]; then
+    echo "Resolved modify/delete conflicts on translation READMEs."
+    git commit -m "chore(upstream): sync upstream main ($UPSTREAM_HASH)"
+  else
+    echo ""
+    echo "======================================================================" >&2
+    echo "CONFLICT: Merge conflicts detected!" >&2
+    echo "Resolve the conflicts, run tests, and commit with:" >&2
+    echo "  git commit" >&2
+    echo "(git rerere will record your resolutions for future merges)" >&2
+    echo "======================================================================" >&2
+    exit 1
+  fi
 fi
 
 echo ""
