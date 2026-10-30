@@ -42,6 +42,7 @@ type Connection struct {
 	ResolverLabel     string
 	Key               string
 	IsValid           bool
+	StandbyEligible   bool
 	UploadMTUBytes    int
 	UploadMTUChars    int
 	DownloadMTUBytes  int
@@ -93,6 +94,8 @@ type Balancer struct {
 	mu                  sync.RWMutex
 	log                 *logger.Logger
 	maxActiveResolvers  int
+	syncedUploadMTU     int
+	syncedDownloadMTU   int
 	connections         []Connection
 	indexByKey          map[string]int
 	activeIDs           []int
@@ -233,6 +236,7 @@ func (b *Balancer) SetConnections(connections []*Connection) {
 		}
 		copied := *conn
 		copied.IsValid = false
+		copied.StandbyEligible = false
 		copied.UploadMTUBytes = 0
 		copied.UploadMTUChars = 0
 		copied.DownloadMTUBytes = 0
@@ -283,15 +287,23 @@ func (b *Balancer) SetConnectionValidityWithLog(key string, valid bool, logReact
 		return false
 	}
 	if b.connections[idx].IsValid == valid {
+		if !valid && b.connections[idx].StandbyEligible {
+			b.connections[idx].StandbyEligible = false
+			b.clearPreferredResolverReferencesLocked(key)
+		} else if valid && b.connections[idx].StandbyEligible {
+			b.connections[idx].StandbyEligible = false
+		}
 		return true
 	}
 
 	b.connections[idx].IsValid = valid
 	if valid {
+		b.connections[idx].StandbyEligible = false
 		if stats := b.stats[idx]; stats != nil {
 			stats.resetWindow()
 		}
 	} else {
+		b.connections[idx].StandbyEligible = false
 		b.clearPreferredResolverReferencesLocked(key)
 	}
 	b.moveConnectionStateLocked(idx, valid)
@@ -299,16 +311,69 @@ func (b *Balancer) SetConnectionValidityWithLog(key string, valid bool, logReact
 	return true
 }
 
+// SetConnectionStandbyEligible explicitly sets whether an inactive resolver is eligible
+// for standby promotion during pool optimization. Active connections cannot be marked standby eligible.
+func (b *Balancer) SetConnectionStandbyEligible(key string, eligible bool) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	idx, ok := b.indexByKey[key]
+	if !ok || idx < 0 || idx >= len(b.connections) {
+		return false
+	}
+	if b.connections[idx].IsValid {
+		return false
+	}
+	b.connections[idx].StandbyEligible = eligible
+	return true
+}
+
+// IsConnectionStandbyEligible reports whether a resolver is currently marked standby eligible.
+func (b *Balancer) IsConnectionStandbyEligible(key string) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	idx, ok := b.indexByKey[key]
+	if !ok || idx < 0 || idx >= len(b.connections) {
+		return false
+	}
+	return b.connections[idx].StandbyEligible
+}
+
+// SetSessionSynchronizedMTU records the active session's negotiated upload and download MTU.
+// Standby candidate promotions in optimizeActivePoolLocked require the candidate's probed
+// MTU to meet or exceed these values.
+func (b *Balancer) SetSessionSynchronizedMTU(uploadMTU, downloadMTU int) {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.syncedUploadMTU = uploadMTU
+	b.syncedDownloadMTU = downloadMTU
+}
+
+// SessionSynchronizedMTU returns the currently configured synchronized upload and download MTU.
+func (b *Balancer) SessionSynchronizedMTU() (int, int) {
+	if b == nil {
+		return 0, 0
+	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.syncedUploadMTU, b.syncedDownloadMTU
+}
+
 // ResolverStatsSnapshot captures a point-in-time snapshot of resolver metrics.
 type ResolverStatsSnapshot struct {
-	Connection    Connection
-	Sent          uint64
-	Acked         uint64
-	Lost          uint64
-	LossRatio     float64
-	AverageRTT    time.Duration
-	ActiveStreams int
-	IsValid       bool
+	Connection      Connection
+	Sent            uint64
+	Acked           uint64
+	Lost            uint64
+	LossRatio       float64
+	AverageRTT      time.Duration
+	ActiveStreams   int
+	IsValid         bool
+	StandbyEligible bool
 }
 
 // GetStatsSnapshot thread-safely exports current metrics for all loaded resolvers.
@@ -356,14 +421,15 @@ func (b *Balancer) GetStatsSnapshot() []ResolverStatsSnapshot {
 		}
 
 		snapshots[i] = ResolverStatsSnapshot{
-			Connection:    conn,
-			Sent:          sent,
-			Acked:         acked,
-			Lost:          lost,
-			LossRatio:     lossRatio,
-			AverageRTT:    avgRTT,
-			ActiveStreams: streamCounts[conn.Key],
-			IsValid:       conn.IsValid,
+			Connection:      conn,
+			Sent:            sent,
+			Acked:           acked,
+			Lost:            lost,
+			LossRatio:       lossRatio,
+			AverageRTT:      avgRTT,
+			ActiveStreams:   streamCounts[conn.Key],
+			IsValid:         conn.IsValid,
+			StandbyEligible: conn.StandbyEligible,
 		}
 	}
 
@@ -488,6 +554,7 @@ func (b *Balancer) ApplyMTUProbeResult(key string, uploadBytes int, uploadChars 
 			stats.resetWindow()
 		}
 	} else {
+		conn.StandbyEligible = false
 		b.clearPreferredResolverReferencesLocked(key)
 	}
 
@@ -1360,6 +1427,7 @@ func (b *Balancer) calculateConnectionScoreLocked(idx int) float64 {
 func (b *Balancer) moveConnectionStateLocked(idx int, valid bool) {
 	if !valid {
 		b.connections[idx].IsValid = false
+		b.connections[idx].StandbyEligible = false
 		b.removeActiveIndexLocked(idx)
 		b.addInactiveIndexLocked(idx)
 		b.clearPreferredResolverReferencesLocked(b.connections[idx].Key)
@@ -1370,6 +1438,7 @@ func (b *Balancer) moveConnectionStateLocked(idx int, valid bool) {
 	for _, activeIdx := range b.activeIDs {
 		if activeIdx == idx {
 			b.connections[idx].IsValid = true
+			b.connections[idx].StandbyEligible = false
 			return
 		}
 	}
@@ -1396,12 +1465,14 @@ func (b *Balancer) moveConnectionStateLocked(idx int, valid bool) {
 		if worstActiveIdx >= 0 && candScore > worstActiveScore {
 			demotedConn := &b.connections[worstActiveIdx]
 			demotedConn.IsValid = false
+			demotedConn.StandbyEligible = true
 			b.activeIDs[worstActivePos] = idx // Replace in activeIDs slice
 			b.addInactiveIndexLocked(worstActiveIdx)
 			b.clearPreferredResolverReferencesLocked(demotedConn.Key)
 
 			b.removeInactiveIndexLocked(idx)
 			b.connections[idx].IsValid = true
+			b.connections[idx].StandbyEligible = false
 
 			if b.log != nil {
 				candConn := &b.connections[idx]
@@ -1415,6 +1486,7 @@ func (b *Balancer) moveConnectionStateLocked(idx int, valid bool) {
 
 		// Candidate does not beat active resolvers -> Place in Standby pool
 		b.connections[idx].IsValid = false
+		b.connections[idx].StandbyEligible = true
 		b.addInactiveIndexLocked(idx)
 		b.removeActiveIndexLocked(idx)
 		if b.log != nil {
@@ -1427,6 +1499,7 @@ func (b *Balancer) moveConnectionStateLocked(idx int, valid bool) {
 
 	// Active pool has available capacity -> Add to activeIDs
 	b.connections[idx].IsValid = true
+	b.connections[idx].StandbyEligible = false
 	b.removeInactiveIndexLocked(idx)
 	b.addActiveIndexLocked(idx)
 }
@@ -1454,7 +1527,16 @@ func (b *Balancer) optimizeActivePoolLocked() bool {
 		bestInactiveScore := -1.0
 		for _, inactIdx := range b.inactiveIDs {
 			conn := &b.connections[inactIdx]
+			if !conn.StandbyEligible {
+				continue
+			}
 			if conn.UploadMTUBytes <= 0 || conn.DownloadMTUBytes <= 0 {
+				continue
+			}
+			if b.syncedUploadMTU > 0 && conn.UploadMTUBytes < b.syncedUploadMTU {
+				continue
+			}
+			if b.syncedDownloadMTU > 0 && conn.DownloadMTUBytes < b.syncedDownloadMTU {
 				continue
 			}
 			score := b.calculateConnectionScoreLocked(inactIdx)
@@ -1470,9 +1552,11 @@ func (b *Balancer) optimizeActivePoolLocked() bool {
 			promotedConn := &b.connections[bestInactiveIdx]
 
 			demotedConn.IsValid = false
+			demotedConn.StandbyEligible = true
 			b.clearPreferredResolverReferencesLocked(demotedConn.Key)
 
 			promotedConn.IsValid = true
+			promotedConn.StandbyEligible = false
 
 			// Swap IDs
 			b.activeIDs[i] = bestInactiveIdx
