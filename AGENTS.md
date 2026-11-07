@@ -1,142 +1,68 @@
 # AGENTS.md — conventions for agents and contributors
 
-This repository (`DNStunnel` / `MasterDnsVPN`) is the **downstream Go core fork**
-of `masterking32/MasterDnsVPN`. It is also the upstream core provider for the
-Android client repository (`taskkillstar/MasterDnsVPN-AndroidClient`).
+MasterDnsVPN is a high-performance DNS tunneling system carrying TCP and SOCKS traffic over DNS query-response exchanges.
 
-Plan executors, coding agents, and human contributors must follow the conventions
-below to move fast on customized features while maintaining clean compatibility
-with upstream changes.
+## Repository layout
 
----
+| Path | Role |
+|------|------|
+| `cmd/client/` | Client CLI application entry point. |
+| `cmd/server/` | Authoritative DNS server application entry point. |
+| `internal/client/` | Client tunnel path lifecycle, resolver dispatch, and tunnel orchestration. |
+| `internal/vpnproto/` | Wire protocol packet framing, serialization, and parsing. |
+| `internal/arq/` | Selective-repeat ARQ reliability layer over DNS. |
+| `internal/mlq/` | Multi-Level Queue priority scheduling. |
+| `internal/fragmentstore/` | Packet fragmentation and reassembly. |
+| `internal/basecodec/` | DNS payload encodings (Base32, Base36, Base64, Hex). |
+| `internal/security/` | Encryption and cryptographic ciphers (ChaCha20, AES, XOR). |
+| `internal/logger/` | Centralized structured logging. |
+| `internal/config/` | Client and server TOML configuration parsers. |
 
-## 1. Repository Identity & Roles
+## Build & test commands
 
-| Remote / Branch | URL / Target | Role | Policy |
-| :--- | :--- | :--- | :--- |
-| `origin` | `https://github.com/taskkillstar/MasterDnsVPN.git` | Your downstream fork. | Default push/pull target. |
-| `upstream` | `https://github.com/masterking32/MasterDnsVPN.git` | Upstream project. | Read-only. Never push directly. |
-| `main` | Tracks `origin/main`. | Downstream production trunk. | **Never force-push**. Must remain buildable & tested. |
-
-The Android client (`DNStunnel-mobile`) vendors `cmd/` and `internal/` directly
-from `origin/main` via its `scripts/sync_core.sh`. Stability on `origin/main` is
-critical.
-
----
-
-## 2. Two-Track Development Strategy
-
-Upstream maintainer review is slow or reluctant. **Never block on upstream approval.**
-
-### Track 1: Downstream Features & Optimizations (Move Fast)
-- Branch from `origin/main` (e.g. `feat/<name>`, `perf/<name>`).
-- Implement features in a modular, decoupled manner.
-- Merge into `origin/main` as soon as unit tests pass (`go test ./...`).
-- Do not wait for or request upstream review for opinionated fork features.
-
-### Track 2: Upstream Bugfixes (PR Candidates)
-- When fixing an upstream bug (e.g. `fix/strategy6-probation-starvation`), branch
-  strictly from `upstream/main`:
-  ```bash
-  git checkout -b fix/<bug-name> upstream/main
-  ```
-- Keep the commit atomic, minimal, and free of any downstream-only dependencies.
-- Push to `origin/fix/<bug-name>` and open an upstream PR to `masterking32/MasterDnsVPN`.
-- Cherry-pick or merge this branch into your `origin/main` immediately. Whether
-  upstream merges it today, in 6 months, or never, your fork continues moving forward.
-
----
-
-## 3. Commit Conventions
-
-Follow Conventional Commits: `<type>(<scope>): <short summary>` in lowercase.
-
-- **Types**:
-  - `feat`: New feature or user-facing enhancement.
-  - `fix`: Bug fix.
-  - `perf`: Performance optimization.
-  - `refactor`: Code change that neither fixes a bug nor adds a feature.
-  - `test`: Adding or correcting tests.
-  - `chore`: Maintenance, dependencies, or upstream sync.
-- **Scopes**:
-  - `client`: Client logic, runtime, or connection management.
-  - `resolver`: Resolver probing, scoring, or selection.
-  - `balancer`: Strategy algorithms or pool balancing.
-  - `config`: TOML configuration parsing and defaults.
-  - `server`: Server/relay logic.
-  - `upstream`: Upstream synchronization commits.
-
-Examples:
-- `feat(resolver): implement dynamic MAX_ACTIVE_RESOLVERS pool bounding`
-- `fix(balancer): eliminate probation starvation in LossThenLatency strategy`
-- `chore(upstream): sync upstream main (acbf1c6)`
-
----
-
-## 4. Code Decoupling: Preventing Upstream Merge Conflicts
-
-To prevent merge hell when syncing upstream commits:
-
-### 1. Additive-First Architecture
-- Place new features, data structures, metrics, and optimizers in **new files**
-  (e.g., `internal/client/micro_burst.go`, `internal/client/runtime_stats.go`).
-- Avoid inlining hundreds of lines of downstream code into upstream files
-  (e.g. `balancer.go`, `client.go`).
-
-### 2. Surgical Hooks in Upstream Files
-- When upstream files must interact with downstream features, keep modifications to
-  **minimal hooks** (1–3 lines):
-  ```go
-  // Downstream Hook: record runtime stats if enabled
-  if s := r.statsCollector; s != nil {
-      s.RecordLatency(resolver, latency)
-  }
-  ```
-- Delegate all complex logic to helper methods in your own files.
-
-### 3. No Translation / Doc Churn
-- Upstream frequently pushes translations to `README_*.MD` (`README_ZH.MD`,
-  `README_RU.MD`, `README_ES.MD`, etc.).
-- **DO NOT edit non-English README translation files** for downstream features.
-- Keep downstream documentation either in `README.MD` or in dedicated fork doc files.
-  Editing translation files guarantees merge conflicts on every upstream README sync.
-
-### 4. Zero Blanket Formatting / Linting Churn
-- Do not run auto-formatters (e.g. `gofmt -w .`) over untouched upstream files.
-- Keep diffs against `upstream/main` clean and restricted only to intentional logic changes.
-
----
-
-## 5. Upstream Sync Protocol
-
-### Enabling Git `rerere` (Mandatory)
-Ensure Reuse Recorded Resolution is enabled so conflict resolutions are remembered:
 ```bash
-git config rerere.enabled true
-git config rerere.autoupdate true
-```
-
-### Syncing Upstream Locally
-Use the helper script:
-```bash
-bash ./scripts/sync_upstream.sh
-```
-Or manually:
-```bash
-git fetch upstream
-git checkout main
-git merge upstream/main -m "chore(upstream): sync upstream main ($(git rev-parse --short upstream/main))"
+# Run the entire test suite
 go test ./...
-git push origin main
+
+# Fast scoped tests during development (internal/client tests take ~60s; test individual packages for tight feedback loops)
+go test ./internal/<package>
+
+# Build binaries
+go build ./cmd/client
+go build ./cmd/server
 ```
 
-### Propagating to the Android Client
-Once `origin/main` is verified and pushed, sync the Android repository
-(`c:\Dev\Projects\DNStunnel-mobile`):
-```powershell
-& "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe" ./scripts/sync_core.sh
-```
-Verify the Android gomobile bridge still compiles:
-```bash
-GOOS=android GOARCH=arm64 go build ./mobile/...
-```
+## Conventions
+
+- **Domain language**: Use terms defined in [`CONTEXT.md`](./CONTEXT.md). Respect `_Avoid_` aliases.
+- **Logging**: Use `internal/logger` instances scoped to subsystems. Avoid raw `fmt.Println` or stdlib `log`.
+- **Error handling**: Return wrapped errors using `fmt.Errorf("...: %w", err)` for actionable call chains.
+- **Testing**: Place unit tests alongside code in `*_test.go`. Target deterministic tests; isolate network dependencies with mocks or loopbacks.
+- **Commits**: Conventional commits in lowercase (`feat(arq):`, `fix(client):`, `chore:`, `docs:`).
+
+## Agent skills
+
+### Issue tracker
+
+Local markdown files in `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context (`CONTEXT.md` and `docs/adr/` at repo root). See `docs/agents/domain.md`.
+
+## Git Remotes & Upstream PR Protocol
+
+- **Remotes**:
+  - `origin` (`https://github.com/taskkillstar/MasterDnsVPN.git`): Contributor fork. Fork `main` is downstream-only and retains personal agent tooling, `AGENTS.md`, `CONTEXT.md`, and `docs/agents/`.
+  - `upstream` (`https://github.com/masterking32/MasterDnsVPN.git`): Official upstream maintainer repository.
+- **Upstream PR boundaries**:
+  - NEVER include personal agent workflows (`AGENTS.md`), redundant context (`CONTEXT.md`), or private planning docs (`docs/agents/`) in PR branches targeting `upstream`.
+  - Upstream PRs must strictly contain only feature code, tests, and agreed-upon public documentation.
+  - Architectural guides (such as `docs/resolver-manager.md`) should be submitted in a dedicated docs PR or explicitly coordinated with the maintainer.
+- **Syncing fork `main` from upstream**:
+  - Always synchronize fork `main` using `git merge upstream/main` (never rebase `main` onto upstream) so fork-only personal files remain preserved.
+  - Never open a PR directly from fork `main` to `upstream/main`.
